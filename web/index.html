@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoleFit — semantic job search</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --line:#262d36; --fg:#e6edf3;
+    --muted:#8b949e; --accent:#58a6ff; --good:#3fb950;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:40px 20px 80px}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}
+  .sub{color:var(--muted);margin:0 0 6px}
+  .stats{color:var(--muted);font-size:13px;margin-bottom:24px}
+  textarea,input,select,button{font:inherit;color:inherit}
+  textarea,input[type=text]{width:100%;background:var(--panel);border:1px solid var(--line);
+       border-radius:8px;padding:11px 13px;resize:vertical}
+  textarea:focus,input:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
+  select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+  button{background:var(--accent);color:#07121f;border:0;border-radius:8px;
+         padding:10px 18px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);font-weight:500}
+  button.ghost.on{color:var(--fg);border-color:var(--accent)}
+  label.chk{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:14px;cursor:pointer}
+  .meta{color:var(--muted);font-size:13px;margin:18px 0 10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+        padding:14px 16px;margin-bottom:10px}
+  .card h3{margin:0 0 3px;font-size:16px}
+  .card h3 a{color:var(--fg);text-decoration:none}
+  .card h3 a:hover{color:var(--accent)}
+  .co{color:var(--muted);font-size:13px;margin-bottom:8px}
+  .sum{font-size:14px;margin:0 0 9px}
+  .tags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+  .tag{background:#1f2630;border:1px solid var(--line);border-radius:5px;
+       padding:2px 7px;font-size:11.5px;color:var(--muted)}
+  .fit{font-size:13.5px;border-left:2px solid var(--good);padding-left:10px;margin:7px 0}
+  .gap{font-size:13.5px;border-left:2px solid #d29922;padding-left:10px;margin:7px 0;color:var(--muted)}
+  .err{color:#f85149;font-size:14px}
+  .tabs{display:flex;gap:6px;margin:14px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RoleFit</h1>
+  <p class="sub">Semantic search and resume matching over Hacker News hiring threads.</p>
+  <p class="stats" id="stats">loading index…</p>
+
+  <div class="tabs">
+    <button class="ghost on" id="tabSearch">Search</button>
+    <button class="ghost" id="tabMatch">Match my resume</button>
+  </div>
+
+  <div id="paneSearch">
+    <div class="row" style="margin-top:14px">
+      <input type="text" id="q" placeholder="e.g. backend engineer working in Go on distributed systems">
+    </div>
+    <div class="row">
+      <select id="mode">
+        <option value="rerank">hybrid + LLM rerank</option>
+        <option value="hybrid">hybrid (RRF)</option>
+        <option value="dense">dense only</option>
+        <option value="lexical">lexical only</option>
+      </select>
+      <select id="wm">
+        <option value="">any location mode</option>
+        <option value="remote">remote</option>
+        <option value="hybrid">hybrid</option>
+        <option value="onsite">onsite</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="intern"> interns welcome</label>
+      <button id="go">Search</button>
+    </div>
+  </div>
+
+  <div id="paneMatch" style="display:none">
+    <div class="row" style="margin-top:14px">
+      <textarea id="resume" rows="9" placeholder="Paste your resume text. It is used for this request only and never stored."></textarea>
+    </div>
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="intern2"> interns welcome</label>
+      <button id="goMatch">Find matches</button>
+    </div>
+  </div>
+
+  <p class="meta" id="meta"></p>
+  <div id="out"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => (s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+fetch("/api/stats").then(r => r.json()).then(d => {
+  $("#stats").textContent =
+    `${d.jobs} postings from ${d.companies} companies · ${d.remote} remote · ${d.intern_friendly} open to interns`;
+}).catch(() => $("#stats").textContent = "index unavailable");
+
+$("#tabSearch").onclick = () => swap(true);
+$("#tabMatch").onclick = () => swap(false);
+function swap(isSearch){
+  $("#paneSearch").style.display = isSearch ? "" : "none";
+  $("#paneMatch").style.display  = isSearch ? "none" : "";
+  $("#tabSearch").classList.toggle("on", isSearch);
+  $("#tabMatch").classList.toggle("on", !isSearch);
+  $("#out").innerHTML = ""; $("#meta").textContent = "";
+}
+
+async function call(url, body, btn){
+  btn.disabled = true; $("#meta").textContent = "searching…"; $("#out").innerHTML = "";
+  try {
+    const r = await fetch(url, {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "request failed");
+    render(d);
+  } catch (e) {
+    $("#meta").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+  } finally { btn.disabled = false; }
+}
+
+$("#go").onclick = () => {
+  const q = $("#q").value.trim();
+  if (q.length < 2) return;
+  call("/api/search", {
+    q, mode: $("#mode").value, top_k: 10,
+    work_mode: $("#wm").value || null, intern_only: $("#intern").checked
+  }, $("#go"));
+};
+$("#q").addEventListener("keydown", e => { if (e.key === "Enter") $("#go").click(); });
+
+$("#goMatch").onclick = () => {
+  const resume = $("#resume").value.trim();
+  if (resume.length < 50) { $("#meta").innerHTML = '<span class="err">Paste a bit more text.</span>'; return; }
+  call("/api/match", { resume, top_k: 8, intern_only: $("#intern2").checked }, $("#goMatch"));
+};
+
+function render(d){
+  $("#meta").textContent = `${d.results.length} results · ${d.mode} · ${d.took_ms} ms`;
+  if (!d.results.length){ $("#out").innerHTML = '<p class="sub">Nothing matched. Try broader wording.</p>'; return; }
+  $("#out").innerHTML = d.results.map(j => `
+    <div class="card">
+      <h3><a href="${esc(j.source_url)}" target="_blank" rel="noopener noreferrer">${esc(j.title || "Untitled role")}</a></h3>
+      <div class="co">${esc(j.company || "unknown company")}${j.location ? " · " + esc(j.location) : ""}${j.work_mode && j.work_mode !== "unknown" ? " · " + esc(j.work_mode) : ""}${j.comp ? " · " + esc(j.comp) : ""}</div>
+      ${j.summary ? `<p class="sum">${esc(j.summary)}</p>` : ""}
+      ${j.stack?.length ? `<div class="tags">${j.stack.map(t => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
+      ${j.why_it_fits ? `<div class="fit">${esc(j.why_it_fits)}</div>` : ""}
+      ${j.whats_missing ? `<div class="gap">Gap: ${esc(j.whats_missing)}</div>` : ""}
+    </div>`).join("");
+}
+</script>
+</body>
+</html>

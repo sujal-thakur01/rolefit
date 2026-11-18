@@ -1,0 +1,17 @@
+[
+  {"id": "q01", "text": "backend engineer working in Go on distributed systems"},
+  {"id": "q02", "text": "machine learning engineer building LLM products"},
+  {"id": "q03", "text": "fully remote frontend role using React and TypeScript"},
+  {"id": "q04", "text": "internship or new grad software engineering role"},
+  {"id": "q05", "text": "Rust systems programming, low level performance work"},
+  {"id": "q06", "text": "data engineer building pipelines over Postgres and Kafka"},
+  {"id": "q07", "text": "devops or platform engineer working with Kubernetes and AWS"},
+  {"id": "q08", "text": "early stage startup hiring a founding engineer"},
+  {"id": "q09", "text": "security engineer doing application security work"},
+  {"id": "q10", "text": "mobile engineer building iOS apps in Swift"},
+  {"id": "q11", "text": "role in Europe that sponsors a visa"},
+  {"id": "q12", "text": "senior engineer in fintech or payments infrastructure"},
+  {"id": "q13", "text": "Python backend with FastAPI and vector search"},
+  {"id": "q14", "text": "full stack engineer at a healthcare company"},
+  {"id": "q15", "text": "compiler or developer tooling engineer"}
+]
